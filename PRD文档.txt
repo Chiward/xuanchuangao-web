@@ -1,0 +1,135 @@
+# 产品需求文档 (PRD) - AI智能宣传稿生成助手 (Web MVP)
+
+| 文档版本 | V1.0 (Web SaaS) |
+| :--- | :--- |
+| **产品名称** | AI智能宣传稿生成助手 (Web版) |
+| **产品形态** | B/S 架构 Web 应用程序 (SaaS) |
+| **部署环境** | Vercel Serverless |
+| **主要用户** | 企业行政、市场、党建、项目经理等需要撰写宣传稿的人员 |
+
+---
+
+## 一、 产品目标与范围
+本阶段致力于打造一款**在线轻量级效率工具**。通过Web端界面，利用内置的6类标准模板、范文风格模仿（基于服务端预设或用户上传）和多模态素材解析能力，帮助用户在无参考文的情况下，仅通过上传原始素材（PPT、文档等）和填写关键要素，调用 **Deepseek API** 快速生成结构严谨的宣传稿，并支持在线富文本智能微调。
+
+---
+
+## 二、 核心功能模块详解
+
+### 1. 模板库管理模块 (Template Library)
+**需求描述：** 用户登录Web后的首屏，决定了后续生成的结构和内容。
+
+*   **P0 (核心功能) - 预置六大场景模板：**
+    *   前端展示卡片式模板选择，系统后台（Server-side）内置以下6种类型的Prompt结构与输入校验逻辑：
+        1.  **重要会议：** 主题/标题、时间、地点、参会人员、内容摘要等。
+        2.  **培训活动：** 主题/标题、时间、地点、培训讲师、内容摘要等。
+        3.  **领导带队检查：** 主题/标题、时间、地点、带队领导、参加人员、内容摘要等。
+        4.  **项目中标：** 主题/标题、时间、地点、项目介绍、内容摘要等。
+        5.  **项目重大进展：** 主题/标题、时间、地点、项目节点、内容摘要等。
+        6.  **科技创新：** 主题/标题、时间、主要成果、内容摘要等。
+*   **P1 (扩展功能) - 自定义新增模板：**（下一阶段再实现）
+    *   Web端提供“新增类型”入口。用户输入类型名称（如“团建活动”）并定义字段，逻辑上对应原有的“examples文件夹”。
+
+### 2. 结构化素材输入模块 (Smart Input)
+**需求描述：** 在线表单与文件上传解析，解决“不知道写什么”的问题。
+
+*   **P0 - 关键要素表单 (5W1H)：**
+    *   基于 **React Hook Form** 实现的动态表单，根据所选模板渲染对应字段。
+*   **P0 - 多模态文件解析 (RAG预处理)：**
+    *   支持点击或拖拽上传文件至浏览器，后端 API 接收文件流并进行内存解析：
+        *   **演示文稿 (.pptx, .pdf)：** 后端提取每一页的标题和正文。
+        *   **会议纪要 (.docx, .txt)：** 后端提取全文内容。
+    *   *交互细节：* 前端展示上传进度条（Progress Bar）及解析状态（Toast 提示：“解析成功，已提取关键信息”）。
+
+### 3. AI生成与智能编辑模块 (Gen & Edit)
+**需求描述：** 核心生产环节，基于 Deepseek API 实现。
+
+*   **P0 - 一键生成：**
+    *   **Prompt工程：** 后端将“表单信息”+“解析后的文本”+“预设范文（Few-Shot）”组装成 Prompt。
+    *   **模型调用：** 调用 **Deepseek API** 进行生成。
+    *   **流式响应：** 前端通过 Server-Sent Events (SSE) 或 Stream 接收数据，展示打字机效果。
+    *   **格式控制：** 提示词约束Deepseek输出Markdown或HTML格式，确保标题居中加粗，段首缩进。
+    *   **图片占位符：** 逻辑不变，生成文本中包含 `【此处插入现场检查照片】` 等标记。
+*   **P0 - 局部优化（划词修改）：**
+    *   **交互逻辑：** 使用 **TipTap** 或 **ProseMirror** 编辑器。用户选中文字后，前端弹出气泡菜单（Bubble Menu）。
+    *   **功能选项：**
+        1.  **换个说法**
+        2.  **扩写**
+        3.  **精简**
+    *   **实现：** 点击选项后，将选中该文本及上下文发送至后端 `/api/rewrite` 接口，调用 Deepseek 进行重写，并回填至编辑器。
+*   **P1 - 富文本编辑器：**
+    *   支持加粗、分段、撤销/重做。
+    *   **导出功能：** 前端将HTML内容转换为 .docx 文件流供用户下载（使用 `html-docx-js` 等库）。
+
+---
+
+## 三、 用户交互流程 (User Flow)
+
+1.  **访问网页** -> 浏览器打开应用链接（Vercel 部署地址）。
+2.  **选择场景** -> 首页点击“项目重大进展”卡片。
+3.  **在线填报** -> 填写项目名称、时间 -> 点击上传区域选择《工程管理周报.docx》。
+4.  **点击生成** -> 界面进入Loading/打字机状态 -> 实时渲染 Deepseek 返回的内容。
+5.  **在线精修** -> 发现某段技术描写太简单 -> 鼠标划词选中 -> 悬浮菜单点击“扩写” -> AI 实时替换该段落。
+6.  **下载成品** -> 点击“导出Word” -> 浏览器下载 .docx 文件 -> 本地打开插入图片。
+
+---
+
+## 四、 技术栈方案 (Technical Stack)
+
+本方案采用现代化的 **Serverless Web 架构**，专注于开发效率与低成本运维，完美适配 Vercel 平台。
+
+### 1. 前端 (Frontend)
+*   **核心框架：** **Next.js 14+ (App Router)**。利用其服务端渲染（SSR）和 API Routes 能力。
+*   **UI 框架：** **React** + **TailwindCSS**。
+*   **组件库：** **Shadcn/UI** (基于 Radix UI，风格简洁专业，适合B端工具)。
+*   **编辑器：** **TipTap** (Headless 且对 React 友好，易于实现划词弹窗菜单)。
+*   **网络请求：** **SWR** 或 **TanStack Query** (处理流式数据和API状态)。
+
+### 2. 后端 (Backend & API)
+为满足“Python解析文档”的需求，采用 Vercel 的混合运行时支持。
+
+*   **API 路由层：** **Next.js API Routes (Node.js)**。负责处理简单的业务逻辑、鉴权和前端通信。
+*   **核心处理层：** **Python FastAPI (Serverless Function)**。
+    *   在 Vercel 中，可以将 Python 代码部署为 Serverless Function（放置在 `/api` 目录下）。
+    *   **用途：** 专门处理复杂的文件解析任务（Node.js 解析 Office 文档能力弱于 Python）和 Prompt 组装。
+*   **核心库 (Python)：**
+    *   **Web框架：** `FastAPI` + `Mangum` (适配 AWS Lambda/Vercel 环境)。
+    *   **文件解析：** `python-pptx`, `python-docx`, `PyPDF2`。
+    *   **HTTP请求：** `httpx` (用于异步调用 Deepseek API)。
+
+### 3. AI 模型层 (AI Engine)
+*   **模型供应商：** **Deepseek API** (深度求索)。
+*   **调用方式：** 后端 Python 服务通过 API Key 发起 Chat Completion 请求。
+*   **流式处理：** 开启 `stream=True`，实现打字机体验。
+
+### 4. 部署与运维 (Deployment)
+*   **平台：** **Vercel**。
+    *   支持 Next.js 前端自动构建。
+    *   支持 Python Serverless Functions 自动部署。
+*   **代码托管：** GitHub。
+*   **环境变量管理：** 在 Vercel Dashboard 中配置 `DEEPSEEK_API_KEY`，确保密钥安全。
+
+---
+
+## 五、 Web版 MVP 目录结构示例 (参考)
+
+```text
+my-publicity-ai/
+├── app/                  # Next.js 前端路由
+│   ├── page.tsx          # 首页
+│   ├── editor/           # 编辑器页面
+│   └── layout.tsx
+├── components/           # React UI 组件 (Shadcn/UI)
+│   ├── template-card.tsx
+│   ├── smart-form.tsx
+│   └── rich-editor.tsx
+├── api/                  # Vercel Serverless Functions (Python)
+│   ├── index.py          # FastAPI 入口
+│   ├── parser.py         # 文档解析逻辑 (docx/pptx)
+│   └── generator.py      # Deepseek 调用逻辑
+├── styles/               # Tailwind CSS
+├── public/               # 静态资源
+├── requirements.txt      # Python 依赖 (FastAPI, python-docx等)
+├── package.json          # Node.js 依赖
+└── vercel.json           # Vercel 构建配置
+```
