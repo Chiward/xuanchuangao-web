@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { Toaster } from "@/components/ui/sonner";
+import { supabase } from "@/lib/supabase";
+import { toast } from "sonner";
 
 function EditorPageContent() {
   const searchParams = useSearchParams();
@@ -17,14 +19,41 @@ function EditorPageContent() {
   const [generatedContent, setGeneratedContent] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
 
-  const handleGenerate = async (formData: any, contextText: string) => {
+  const handleGenerate = async (formData: any, contextText: string, fileInfo?: { path: string, name: string }) => {
     setIsGenerating(true);
     setGeneratedContent(""); // Clear previous content
+    let fullContent = "";
+    let streamFailed = false;
     
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      const user = session?.user;
+
+      if (!user) {
+        toast.error("请先登录后再使用生成功能");
+        setIsGenerating(false);
+        return;
+      }
+
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("credits")
+        .eq("id", user.id)
+        .single();
+      if (profileError) throw profileError;
+      const credits = profile?.credits ?? 0;
+      if (credits < 1) {
+        toast.error("积分不足（需 1 积分）");
+        return;
+      }
+
       const response = await fetch("/api/generate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+            "Content-Type": "application/json",
+            ...(token ? { "Authorization": `Bearer ${token}` } : {})
+        },
         body: JSON.stringify({
           template_type: templateType,
           form_data: formData,
@@ -32,7 +61,10 @@ function EditorPageContent() {
         }),
       });
 
-      if (!response.ok) throw new Error("Generation failed");
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || "生成失败");
+      }
 
       const reader = response.body?.getReader();
       if (!reader) return;
@@ -62,11 +94,47 @@ function EditorPageContent() {
         // So on client side we receive raw text parts.
         // We can just append them.
         
+        if (chunk.includes("[API Error") || chunk.includes("[Network Error")) {
+          streamFailed = true;
+        }
+        fullContent += chunk;
         setGeneratedContent((prev) => prev + chunk);
       }
-    } catch (error) {
+
+      if (!fullContent.trim() || streamFailed) {
+        toast.error("生成失败，请稍后重试");
+        return;
+      }
+
+      let remainingCredits: number | null = null;
+      const { data: rpcCredits, error: deductError } = await supabase.rpc("deduct_generation_credit");
+      if (deductError) {
+        const { data: updatedProfile, error: updateError } = await supabase
+          .from("profiles")
+          .update({ credits: credits - 1 })
+          .eq("id", user.id)
+          .select("credits")
+          .single();
+        if (updateError) throw deductError;
+        remainingCredits = updatedProfile?.credits ?? null;
+      } else {
+        remainingCredits = rpcCredits ?? null;
+      }
+
+      await supabase.from("generation_history").insert({
+        user_id: user.id,
+        template_type: templateType,
+        form_data: formData,
+        context_file_path: fileInfo?.path || null,
+        context_filename: fileInfo?.name || null,
+        generated_content: fullContent,
+      });
+
+      toast.success(`生成成功，消耗 1 积分${remainingCredits === null ? "" : `，剩余 ${remainingCredits} 积分`}`);
+
+    } catch (error: any) {
       console.error(error);
-      // toast.error("生成失败");
+      toast.error(error.message || "生成失败");
     } finally {
       setIsGenerating(false);
     }

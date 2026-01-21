@@ -9,10 +9,11 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Upload, FileText, X } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/lib/supabase";
 
 interface SmartFormProps {
   templateType: string;
-  onGenerate: (data: any, contextText: string) => void;
+  onGenerate: (data: any, contextText: string, fileInfo?: { path: string, name: string }) => void;
   isGenerating: boolean;
 }
 
@@ -65,6 +66,7 @@ export function SmartForm({ templateType, onGenerate, isGenerating }: SmartFormP
   const { register, handleSubmit } = useForm();
   const [contextText, setContextText] = useState("");
   const [uploadedFile, setUploadedFile] = useState<string | null>(null);
+  const [filePath, setFilePath] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
   const fields = FIELD_CONFIG[templateType] || FIELD_CONFIG["meeting"];
@@ -78,10 +80,28 @@ export function SmartForm({ templateType, onGenerate, isGenerating }: SmartFormP
     formData.append("file", file);
 
     try {
-      const res = await fetch("/api/parse", {
+      // 1. Parallel Upload to Supabase Storage & Parse API
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
+      
+      const uploadPromise = (async () => {
+        if (!userId) return null; // If not logged in, skip storage (or allow anon?) - assuming logged in for history
+        const ext = file.name.split('.').pop();
+        const path = `${userId}/${Date.now()}.${ext}`;
+        const { error } = await supabase.storage.from('user_uploads').upload(path, file);
+        if (error) {
+            console.error("Storage upload failed:", error);
+            return null;
+        }
+        return path;
+      })();
+
+      const parsePromise = fetch("/api/parse", {
         method: "POST",
         body: formData,
       });
+
+      const [storagePath, res] = await Promise.all([uploadPromise, parsePromise]);
       
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({ detail: "未知错误" }));
@@ -91,6 +111,8 @@ export function SmartForm({ templateType, onGenerate, isGenerating }: SmartFormP
       const data = await res.json();
       setContextText((prev) => prev + "\n\n" + data.content);
       setUploadedFile(file.name);
+      if (storagePath) setFilePath(storagePath);
+      
       toast.success("文件解析成功，已提取关键信息");
     } catch (error: any) {
       toast.error(`文件上传失败: ${error.message}`);
@@ -101,7 +123,7 @@ export function SmartForm({ templateType, onGenerate, isGenerating }: SmartFormP
   };
 
   const onSubmit = (data: any) => {
-    onGenerate(data, contextText);
+    onGenerate(data, contextText, filePath && uploadedFile ? { path: filePath, name: uploadedFile } : undefined);
   };
 
   return (
@@ -160,6 +182,7 @@ export function SmartForm({ templateType, onGenerate, isGenerating }: SmartFormP
                     className="h-6 w-6"
                     onClick={() => {
                       setUploadedFile(null);
+                      setFilePath(null);
                       setContextText("");
                     }}
                   >

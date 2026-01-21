@@ -7,3 +7,4 @@ pypdf2
 python-multipart
 uvicorn
 python-dotenv
+supabase

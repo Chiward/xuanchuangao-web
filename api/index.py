@@ -1,9 +1,8 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
-import json
 
 # Import internal modules
 # Note: In Vercel serverless environment, imports might need adjustment depending on structure.
@@ -51,7 +50,7 @@ async def parse_file(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/generate")
-async def generate(request: GenerateRequest):
+async def generate(request: GenerateRequest, req: Request):
     prompt = build_prompt(request.template_type, request.form_data, request.context_text)
     
     return StreamingResponse(

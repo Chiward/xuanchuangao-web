@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SiteHeader } from "@/components/site-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FileText, Users, CheckSquare, Award, TrendingUp, Lightbulb } from "lucide-react";
 
@@ -49,36 +50,39 @@ const templates = [
 
 export default function Home() {
   return (
-    <div className="container mx-auto py-10 px-4">
-      <div className="text-center mb-12">
-        <h1 className="text-4xl font-bold mb-4 tracking-tight">AI 智能宣传稿生成助手</h1>
-        <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-          选择一个写作场景，只需简单填写关键要素并上传素材，即可快速生成结构严谨、内容丰富的企业宣传稿。
-        </p>
-      </div>
+    <div className="min-h-screen bg-background flex flex-col">
+      <SiteHeader />
+      <main className="container mx-auto py-10 px-4 flex-1">
+        <div className="text-center mb-12">
+          <h1 className="text-4xl font-bold mb-4 tracking-tight">AI 智能宣传稿生成助手</h1>
+          <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
+            选择一个写作场景，只需简单填写关键要素并上传素材，即可快速生成结构严谨、内容丰富的企业宣传稿。
+          </p>
+        </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {templates.map((template) => (
-          <Link href={`/editor?template=${template.id}`} key={template.id} className="block group">
-            <Card className="h-full transition-all hover:shadow-lg hover:border-primary/50 cursor-pointer">
-              <CardHeader>
-                <div className="flex items-center gap-3 mb-2">
-                  <template.icon className={`w-8 h-8 ${template.color}`} />
-                  <CardTitle className="group-hover:text-primary transition-colors">
-                    {template.title}
-                  </CardTitle>
-                </div>
-                <CardDescription>{template.description}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-sm text-muted-foreground bg-muted/50 p-3 rounded-md">
-                  点击开始写作 &rarr;
-                </div>
-              </CardContent>
-            </Card>
-          </Link>
-        ))}
-      </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {templates.map((template) => (
+            <Link href={`/editor?template=${template.id}`} key={template.id} className="block group">
+              <Card className="h-full transition-all hover:shadow-lg hover:border-primary/50 cursor-pointer">
+                <CardHeader>
+                  <div className="flex items-center gap-3 mb-2">
+                    <template.icon className={`w-8 h-8 ${template.color}`} />
+                    <CardTitle className="group-hover:text-primary transition-colors">
+                      {template.title}
+                    </CardTitle>
+                  </div>
+                  <CardDescription>{template.description}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-sm text-muted-foreground bg-muted/50 p-3 rounded-md">
+                    点击开始写作 &rarr;
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+          ))}
+        </div>
+      </main>
     </div>
   );
 }
