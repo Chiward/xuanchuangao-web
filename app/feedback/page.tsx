@@ -198,7 +198,7 @@ export default function FeedbackPage() {
 
           <div className="mt-12">
             <h2 className="text-2xl font-bold tracking-tight mb-6">历史反馈记录</h2>
-            <FeedbackList key={refreshKey} />
+            <FeedbackList refreshTrigger={refreshKey} />
           </div>
         </div>
       </main>
