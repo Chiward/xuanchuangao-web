@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { User } from "@supabase/supabase-js";
+import type { AuthChangeEvent, Session, User } from "@supabase/supabase-js";
 import { Loader2, User as UserIcon, Coins, Home, History, MessageSquare } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -33,7 +33,7 @@ export function SiteHeader() {
 
     checkUser();
 
-    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: authListener } = supabase.auth.onAuthStateChange((event: AuthChangeEvent, session: Session | null) => {
       if (session?.user) {
         setUser(session.user);
         fetchCredits(session.user.id);
