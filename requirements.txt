@@ -8,3 +8,4 @@ python-multipart
 uvicorn
 python-dotenv
 supabase
+pyjwt

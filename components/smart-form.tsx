@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
-import { Upload, FileText, X } from "lucide-react";
+import { Upload, FileText, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 
@@ -17,59 +17,59 @@ interface SmartFormProps {
   isGenerating: boolean;
 }
 
-const FIELD_CONFIG: Record<string, { label: string; name: string; type: "text" | "date" | "textarea"; placeholder?: string }[]> = {
-  meeting: [
-    { label: "会议主题", name: "title", type: "text", placeholder: "例如：2023年度总结表彰大会" },
-    { label: "会议时间", name: "date", type: "date" },
-    { label: "会议地点", name: "location", type: "text", placeholder: "例如：公司一号会议室" },
-    { label: "参会人员", name: "attendees", type: "text", placeholder: "例如：公司领导班子、各部门负责人" },
-    { label: "内容摘要", name: "summary", type: "textarea", placeholder: "简要描述会议主要议程、强调重点..." },
-  ],
-  training: [
-    { label: "培训主题", name: "title", type: "text", placeholder: "例如：合规风控专题培训" },
-    { label: "培训时间", name: "date", type: "date" },
-    { label: "培训地点", name: "location", type: "text" },
-    { label: "培训讲师", name: "lecturer", type: "text" },
-    { label: "内容摘要", name: "summary", type: "textarea", placeholder: "简要描述培训背景、主要内容..." },
-  ],
-  inspection: [
-    { label: "检查主题", name: "title", type: "text", placeholder: "例如：安全生产专项检查" },
-    { label: "检查时间", name: "date", type: "date" },
-    { label: "检查地点", name: "location", type: "text" },
-    { label: "带队领导", name: "leader", type: "text" },
-    { label: "陪同人员", name: "attendees", type: "text" },
-    { label: "内容摘要", name: "summary", type: "textarea", placeholder: "简要描述检查重点、发现问题及指示..." },
-  ],
-  bid_winning: [
-    { label: "项目名称", name: "title", type: "text", placeholder: "例如：某产业园施工总承包项目" },
-    { label: "中标时间", name: "date", type: "date" },
-    { label: "项目地点", name: "location", type: "text" },
-    { label: "项目介绍", name: "project_intro", type: "textarea", placeholder: "项目规模、建设内容、中标金额等..." },
-    { label: "内容摘要", name: "summary", type: "textarea", placeholder: "中标意义、团队努力..." },
-  ],
-  project_progress: [
-    { label: "项目名称", name: "title", type: "text" },
-    { label: "当前时间", name: "date", type: "date" },
-    { label: "项目地点", name: "location", type: "text" },
-    { label: "关键节点", name: "milestone", type: "text", placeholder: "例如：主体结构封顶" },
-    { label: "内容摘要", name: "summary", type: "textarea", placeholder: "施工进展、攻坚克难情况..." },
-  ],
-  innovation: [
-    { label: "成果名称", name: "title", type: "text" },
-    { label: "获奖/认定时间", name: "date", type: "date" },
-    { label: "主要成果", name: "achievements", type: "textarea", placeholder: "技术创新点、应用效果..." },
-    { label: "内容摘要", name: "summary", type: "textarea", placeholder: "研发历程、未来展望..." },
-  ],
-};
+interface FormField {
+  label: string;
+  name: string;
+  type: "text" | "date" | "textarea";
+  placeholder?: string;
+  required?: boolean;
+}
 
 export function SmartForm({ templateType, onGenerate, isGenerating }: SmartFormProps) {
-  const { register, handleSubmit } = useForm();
+  const { register, handleSubmit, reset } = useForm();
   const [contextText, setContextText] = useState("");
   const [uploadedFile, setUploadedFile] = useState<string | null>(null);
   const [filePath, setFilePath] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  
+  // Dynamic config state
+  const [fields, setFields] = useState<FormField[]>([]);
+  const [isLoadingConfig, setIsLoadingConfig] = useState(true);
 
-  const fields = FIELD_CONFIG[templateType] || FIELD_CONFIG["meeting"];
+  // Fetch template config from API
+  useEffect(() => {
+    const fetchConfig = async () => {
+      setIsLoadingConfig(true);
+      try {
+        const res = await fetch(`/api/templates?t=${Date.now()}`, { cache: "no-store" });
+        if (res.ok) {
+          const templates = await res.json();
+          const currentTemplate = templates.find((t: any) => t.key === templateType);
+          if (currentTemplate && currentTemplate.form_config) {
+            setFields(currentTemplate.form_config);
+          } else {
+            toast.error("未找到该模板配置，请联系管理员");
+          }
+        } else {
+          console.error("Failed to fetch templates");
+        }
+      } catch (error) {
+        console.error("Error loading template config:", error);
+      } finally {
+        setIsLoadingConfig(false);
+      }
+    };
+
+    fetchConfig();
+  }, [templateType]);
+
+  // Reset form when template changes
+  useEffect(() => {
+    reset();
+    setContextText("");
+    setUploadedFile(null);
+    setFilePath(null);
+  }, [templateType, reset]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -126,6 +126,16 @@ export function SmartForm({ templateType, onGenerate, isGenerating }: SmartFormP
     onGenerate(data, contextText, filePath && uploadedFile ? { path: filePath, name: uploadedFile } : undefined);
   };
 
+  if (isLoadingConfig) {
+    return (
+      <Card>
+        <CardContent className="py-10 flex justify-center">
+          <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <Card>
@@ -133,12 +143,15 @@ export function SmartForm({ templateType, onGenerate, isGenerating }: SmartFormP
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             {fields.map((field) => (
               <div key={field.name} className="space-y-2">
-                <Label htmlFor={field.name}>{field.label}</Label>
+                <Label htmlFor={field.name}>
+                  {field.label}
+                  {field.required && <span className="text-red-500 ml-1">*</span>}
+                </Label>
                 {field.type === "textarea" ? (
                   <Textarea
                     id={field.name}
                     placeholder={field.placeholder}
-                    {...register(field.name)}
+                    {...register(field.name, { required: field.required })}
                     className="min-h-[100px]"
                   />
                 ) : (
@@ -146,7 +159,7 @@ export function SmartForm({ templateType, onGenerate, isGenerating }: SmartFormP
                     id={field.name}
                     type={field.type}
                     placeholder={field.placeholder}
-                    {...register(field.name)}
+                    {...register(field.name, { required: field.required })}
                   />
                 )}
               </div>

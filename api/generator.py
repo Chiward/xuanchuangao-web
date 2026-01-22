@@ -1,91 +1,75 @@
 import os
 import json
 import httpx
-import glob
 from typing import Dict, Any, AsyncGenerator
 from dotenv import load_dotenv
+from supabase import create_client, Client
 
 try:
     from api.parser import read_text_from_path
 except ImportError:
     from parser import read_text_from_path
 
-# Load environment variables from .env.local
-load_dotenv(".env.local")
+# Load environment variables
+_env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".env.local"))
+load_dotenv(_env_path)
 
 # Configuration
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions"
 
-# Map template IDs to example folder names
-CATEGORY_MAP = {
-    "meeting": "重要会议",
-    "training": "培训活动",
-    "inspection": "领导带队检查",
-    "bid_winning": "项目中标",
-    "project_progress": "项目重大进展",
-    "innovation": "科技创新"
-}
+SUPABASE_URL = os.environ.get("NEXT_PUBLIC_SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 
-TEMPLATES = {
-    "meeting": "你是一个专业的企业宣传稿撰写助手。请根据以下会议信息和参考材料，写一篇正式的会议纪要宣传稿。\n\n【会议要素】\n主题：{title}\n时间：{date}\n地点：{location}\n参会人员：{attendees}\n内容摘要：{summary}\n\n【参考材料】\n{context}\n\n【学习范文】\n{examples}\n\n【要求】\n1. 使用HTML格式输出，只返回<body>标签内的内容。\n2. 标题使用<h2>标签，居中对齐。\n3. 正文分段清晰，使用<p>标签，每段开头空两格（使用&emsp;&emsp;）。\n4. 重点内容（如讲话要点）使用<strong>加粗。\n5. 语气庄重、客观。",
-    "training": "你是一个专业的企业宣传稿撰写助手。请根据以下培训活动信息，写一篇生动的培训活动宣传稿。\n\n【活动要素】\n主题：{title}\n时间：{date}\n地点：{location}\n讲师：{lecturer}\n内容摘要：{summary}\n\n【参考材料】\n{context}\n\n【学习范文】\n{examples}\n\n【要求】\n1. 使用HTML格式输出，只返回<body>标签内的内容。\n2. 标题使用<h2>标签，居中对齐。\n3. 正文分段清晰，使用<p>标签，每段开头空两格（使用&emsp;&emsp;）。\n4. 突出培训目的、现场氛围、学员收获。\n5. 语气积极向上。",
-    "inspection": "你是一个专业的企业宣传稿撰写助手。请根据以下领导检查信息，写一篇正式的迎检宣传稿。\n\n【检查要素】\n主题：{title}\n时间：{date}\n地点：{location}\n带队领导：{leader}\n陪同人员：{attendees}\n内容摘要：{summary}\n\n【参考材料】\n{context}\n\n【学习范文】\n{examples}\n\n【要求】\n1. 使用HTML格式输出，只返回<body>标签内的内容。\n2. 标题使用<h2>标签，居中对齐。\n3. 正文分段清晰，使用<p>标签，每段开头空两格（使用&emsp;&emsp;）。\n4. 重点描述检查过程、领导指示、后续整改或落实措施。\n5. 语气严谨。",
-    "bid_winning": "你是一个专业的企业宣传稿撰写助手。请根据以下中标信息，写一篇振奋人心的中标喜报。\n\n【中标要素】\n项目名称：{title}\n时间：{date}\n地点：{location}\n项目介绍：{project_intro}\n内容摘要：{summary}\n\n【参考材料】\n{context}\n\n【学习范文】\n{examples}\n\n【要求】\n1. 使用HTML格式输出，只返回<body>标签内的内容。\n2. 标题使用<h2>标签，居中对齐。\n3. 正文分段清晰，使用<p>标签，每段开头空两格（使用&emsp;&emsp;）。\n4. 介绍项目概况、中标意义、团队努力。\n5. 语气热烈、自信。",
-    "project_progress": "你是一个专业的企业宣传稿撰写助手。请根据以下项目进展信息，写一篇项目通讯稿。\n\n【项目要素】\n项目名称：{title}\n时间：{date}\n地点：{location}\n关键节点：{milestone}\n内容摘要：{summary}\n\n【参考材料】\n{context}\n\n【学习范文】\n{examples}\n\n【要求】\n1. 使用HTML格式输出，只返回<body>标签内的内容。\n2. 标题使用<h2>标签，居中对齐。\n3. 正文分段清晰，使用<p>标签，每段开头空两格（使用&emsp;&emsp;）。\n4. 描述施工现场情况、攻坚克难过程、节点意义。\n5. 语气务实、鼓舞人心。",
-    "innovation": "你是一个专业的企业宣传稿撰写助手。请根据以下科技创新成果，写一篇科技成果宣传稿。\n\n【创新要素】\n成果名称：{title}\n时间：{date}\n主要成果：{achievements}\n内容摘要：{summary}\n\n【参考材料】\n{context}\n\n【学习范文】\n{examples}\n\n【要求】\n1. 使用HTML格式输出，只返回<body>标签内的内容。\n2. 标题使用<h2>标签，居中对齐。\n3. 正文分段清晰，使用<p>标签，每段开头空两格（使用&emsp;&emsp;）。\n4. 介绍研发背景、技术难点、创新点、应用价值。\n5. 语气专业、具有前瞻性。"
-}
+# Initialize Supabase (Use Service Role Key if available to ensure reading templates)
+sb: Client = None
+if SUPABASE_URL and (SERVICE_ROLE_KEY or SUPABASE_KEY):
+    sb = create_client(SUPABASE_URL, SERVICE_ROLE_KEY or SUPABASE_KEY)
 
-def load_category_examples(template_type: str) -> str:
-    category_name = CATEGORY_MAP.get(template_type)
-    if not category_name:
-        return ""
-
-    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-    examples_dir = os.path.join(project_root, "examples", category_name)
-    if not os.path.exists(examples_dir):
-        return ""
-
-    extensions = ["*.docx", "*.txt", "*.pdf"]
-    files = []
-    for ext in extensions:
-        files.extend(glob.glob(os.path.join(examples_dir, ext)))
-
-    if not files:
-        return ""
-
-    files.sort(key=os.path.getmtime, reverse=True)
-    target_file = files[0]
+def get_template_from_db(template_key: str):
+    if not sb:
+        return None
     try:
-        content = read_text_from_path(target_file)
-        if not content:
-            return ""
-        return f"范文（{os.path.basename(target_file)}）：\n{content[:2000]}..."
+        res = sb.table("templates").select("*").eq("key", template_key).eq("status", "active").single().execute()
+        return res.data
     except Exception as e:
-        print(f"Failed to load example {target_file}: {e}")
-        return ""
+        print(f"Error fetching template {template_key}: {e}")
+        return None
 
 def build_prompt(template_type: str, form_data: Dict[str, Any], context_text: str = "") -> str:
-    template = TEMPLATES.get(template_type)
-    if not template:
+    template_config = get_template_from_db(template_type)
+    
+    if not template_config:
+        # Fallback if DB fetch fails or template not found
         return f"请根据以下信息写一篇宣传稿：\n{json.dumps(form_data, ensure_ascii=False)}\n\n参考材料：\n{context_text}"
     
-    examples_text = load_category_examples(template_type)
+    prompt_template = template_config.get("prompt_template", "")
+    examples_text = template_config.get("example_content", "") or ""
 
-    return template.format(
-        title=form_data.get("title", ""),
-        date=form_data.get("date", ""),
-        location=form_data.get("location", ""),
-        attendees=form_data.get("attendees", ""),
-        leader=form_data.get("leader", ""),
-        lecturer=form_data.get("lecturer", ""),
-        project_intro=form_data.get("project_intro", ""),
-        milestone=form_data.get("milestone", ""),
-        achievements=form_data.get("achievements", ""),
-        summary=form_data.get("summary", ""),
-        context=context_text,
-        examples=examples_text
-    )
+    # Format logic: Replace placeholders with form data
+    # We need to handle potential missing keys in form_data gracefully
+    # We'll use a safe formatting approach
+    
+    format_args = {
+        "context": context_text,
+        "examples": examples_text,
+        **form_data
+    }
+    
+    # Simple replace for placeholders {key} in prompt
+    # Using format_map with a defaultdict-like behavior or just loop replace
+    # because .format() raises KeyError if a key is missing
+    
+    formatted_prompt = prompt_template
+    for key, value in format_args.items():
+        formatted_prompt = formatted_prompt.replace(f"{{{key}}}", str(value or ""))
+        
+    # Clean up any remaining {key} placeholders that weren't filled? 
+    # Or just leave them (Deepseek might ignore or hallucinate, better to strip?)
+    # For now, we assume form_data covers all keys defined in the template config.
+    
+    return formatted_prompt
 
 async def stream_generate(prompt: str) -> AsyncGenerator[str, None]:
     """
